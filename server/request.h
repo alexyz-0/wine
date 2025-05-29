@@ -54,6 +54,7 @@ extern int receive_fd( struct process *process );
 extern int send_client_fd( struct process *process, int fd, obj_handle_t handle );
 extern void read_request( struct thread *thread );
 extern void write_reply( struct thread *thread );
+extern void set_speedhack_multiplier(unsigned int multiplier);
 extern timeout_t monotonic_counter(void);
 extern void open_master_socket(void);
 extern void close_master_socket( timeout_t timeout );
@@ -384,6 +385,7 @@ DECL_HANDLER(set_fd_completion_mode);
 DECL_HANDLER(set_fd_disp_info);
 DECL_HANDLER(set_fd_name_info);
 DECL_HANDLER(set_fd_eof_info);
+DECL_HANDLER(speedhack_set_speed);
 DECL_HANDLER(get_window_layered_info);
 DECL_HANDLER(set_window_layered_info);
 DECL_HANDLER(alloc_user_handle);
@@ -674,6 +676,7 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
     (req_handler)req_set_fd_disp_info,
     (req_handler)req_set_fd_name_info,
     (req_handler)req_set_fd_eof_info,
+    (req_handler)req_speedhack_set_speed,
     (req_handler)req_get_window_layered_info,
     (req_handler)req_set_window_layered_info,
     (req_handler)req_alloc_user_handle,

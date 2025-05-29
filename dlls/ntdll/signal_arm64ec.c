@@ -1623,6 +1623,11 @@ NTSTATUS SYSCALL_API wine_unix_to_nt_file_name( const char *name, WCHAR *buffer,
     __ASM_SYSCALL_FUNC( __id_wine_unix_to_nt_file_name );
 }
 
+NTSTATUS SYSCALL_API wine_update_speedhack_multiplier( ULONG multiplier )
+{
+    __ASM_SYSCALL_FUNC( __id_wine_update_speedhack_multiplier );
+}
+
 static void * const arm64ec_syscalls[] =
 {
 #define SYSCALL_ENTRY(id,name,args) name,

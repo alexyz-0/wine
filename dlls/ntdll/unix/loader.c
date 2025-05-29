@@ -127,6 +127,8 @@ static void * const syscalls[] =
     ALL_SYSCALLS32
 #endif
 #undef SYSCALL_ENTRY
+
+    wine_update_speedhack_multiplier,
 };
 
 static BYTE syscall_args[ARRAY_SIZE(syscalls)] =
