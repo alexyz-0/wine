@@ -82,23 +82,16 @@ static const char *debugstr_timeout( const LARGE_INTEGER *timeout )
 /* return a monotonic time counter, in Win32 ticks */
 static inline ULONGLONG monotonic_counter(void)
 {
-    struct timeval now;
-#ifdef __APPLE__
-    static mach_timebase_info_data_t timebase;
+    ULONG high, low;
 
-    if (!timebase.denom) mach_timebase_info( &timebase );
-    return mach_continuous_time() * timebase.numer / timebase.denom / 100;
-#elif defined(HAVE_CLOCK_GETTIME)
-    struct timespec ts;
-#ifdef CLOCK_MONOTONIC_RAW
-    if (!clock_gettime( CLOCK_MONOTONIC_RAW, &ts ))
-        return ts.tv_sec * (ULONGLONG)TICKSPERSEC + ts.tv_nsec / 100;
-#endif
-    if (!clock_gettime( CLOCK_MONOTONIC, &ts ))
-        return ts.tv_sec * (ULONGLONG)TICKSPERSEC + ts.tv_nsec / 100;
-#endif
-    gettimeofday( &now, 0 );
-    return ticks_from_time_t( now.tv_sec ) + now.tv_usec * 10 - server_start_time;
+    do
+    {
+        high = user_shared_data->InterruptTime.High1Time;
+        low = user_shared_data->InterruptTime.LowPart;
+    }
+    while (high != user_shared_data->InterruptTime.High2Time);
+
+    return (ULONGLONG)high << 32 | low;
 }
 
 #ifdef __linux__
@@ -1814,6 +1807,96 @@ NTSTATUS WINAPI NtDelayExecution( BOOLEAN alertable, const LARGE_INTEGER *timeou
             if (select( 0, NULL, NULL, NULL, &tv ) != -1) break;
         }
     }
+    return STATUS_SUCCESS;
+}
+
+
+static struct sigaction speedhack_prev_sigusr1;
+static volatile LONG speedhack_sig1_pending = 0;
+static volatile ULONG speedhack_sig1_value = 0;
+static volatile LONG speedhack_sig2_pending = 0;
+static volatile ULONG speedhack_sig2_value = 0;
+
+static void speedhack_sigusr1_handler( int sig, siginfo_t *sip, void *ucontext )
+{
+    if (sip && sip->si_code == SI_QUEUE)
+    {
+        speedhack_sig1_value = (ULONG)sip->si_value.sival_int;
+        InterlockedExchange( &speedhack_sig1_pending, 1 );
+        return;
+    }
+    if ((speedhack_prev_sigusr1.sa_flags & SA_SIGINFO) && speedhack_prev_sigusr1.sa_sigaction)
+        speedhack_prev_sigusr1.sa_sigaction( sig, sip, ucontext );
+    else if (!(speedhack_prev_sigusr1.sa_flags & SA_SIGINFO) && speedhack_prev_sigusr1.sa_handler &&
+             speedhack_prev_sigusr1.sa_handler != SIG_IGN && speedhack_prev_sigusr1.sa_handler != SIG_DFL)
+        speedhack_prev_sigusr1.sa_handler( sig );
+}
+
+static void speedhack_sigusr2_handler( int sig, siginfo_t *sip, void *ucontext )
+{
+    if (sip)
+    {
+        speedhack_sig2_value = (ULONG)sip->si_value.sival_int;
+        InterlockedExchange( &speedhack_sig2_pending, 1 );
+    }
+}
+
+/******************************************************************
+ *           wine_update_speedhack_multiplier
+ */
+NTSTATUS WINAPI wine_update_speedhack_multiplier( ULONG multiplier )
+{
+    SERVER_START_REQ( speedhack_set_speed )
+    {
+        req->multiplier = multiplier;
+        wine_server_call( req );
+    }
+    SERVER_END_REQ;
+
+    return STATUS_SUCCESS;
+}
+
+
+/******************************************************************
+ *           wine_speedhack_setup_signals
+ */
+NTSTATUS WINAPI wine_speedhack_setup_signals( void )
+{
+    struct sigaction sa;
+
+    memset( &sa, 0, sizeof(sa) );
+    sa.sa_sigaction = speedhack_sigusr1_handler;
+    sa.sa_flags = SA_RESTART | SA_SIGINFO;
+    sigaction( SIGUSR1, &sa, &speedhack_prev_sigusr1 );
+
+    memset( &sa, 0, sizeof(sa) );
+    sa.sa_sigaction = speedhack_sigusr2_handler;
+    sa.sa_flags = SA_RESTART | SA_SIGINFO;
+    sigaction( SIGUSR2, &sa, NULL );
+
+    return STATUS_SUCCESS;
+}
+
+
+/******************************************************************
+ *           wine_speedhack_poll_signals
+ */
+NTSTATUS WINAPI wine_speedhack_poll_signals( ULONG *sig1_val, ULONG *sig2_val, ULONG *flags )
+{
+    ULONG f = 0;
+
+    if (InterlockedExchange( &speedhack_sig1_pending, 0 ))
+    {
+        if (sig1_val) *sig1_val = speedhack_sig1_value;
+        f |= 1;
+    }
+    if (InterlockedExchange( &speedhack_sig2_pending, 0 ))
+    {
+        if (sig2_val) *sig2_val = speedhack_sig2_value;
+        f |= 2;
+    }
+    if (flags) *flags = f;
+
     return STATUS_SUCCESS;
 }
 

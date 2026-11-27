@@ -506,6 +506,23 @@ int send_client_fd( struct process *process, int fd, obj_handle_t handle )
     return -1;
 }
 
+static double speedhack_multiplier = 1.0;
+static timeout_t last_seen_real_time = 0;
+static timeout_t last_seen_fake_time = 0;
+
+void set_speedhack_multiplier( unsigned int multiplier )
+{
+    speedhack_multiplier = multiplier / 10.0;
+}
+
+static inline timeout_t speedhack_multiply( timeout_t real_time )
+{
+    last_seen_fake_time = (timeout_t)((real_time - last_seen_real_time) * speedhack_multiplier) + last_seen_fake_time;
+    last_seen_real_time = real_time;
+
+    return last_seen_fake_time;
+}
+
 /* return a monotonic time counter */
 timeout_t monotonic_counter(void)
 {
@@ -513,17 +530,17 @@ timeout_t monotonic_counter(void)
     static mach_timebase_info_data_t timebase;
 
     if (!timebase.denom) mach_timebase_info( &timebase );
-    return mach_continuous_time() * timebase.numer / timebase.denom / 100;
+    return speedhack_multiply( mach_continuous_time() * timebase.numer / timebase.denom / 100 );
 #elif defined(HAVE_CLOCK_GETTIME)
     struct timespec ts;
 #ifdef CLOCK_MONOTONIC_RAW
     if (!clock_gettime( CLOCK_MONOTONIC_RAW, &ts ))
-        return (timeout_t)ts.tv_sec * TICKS_PER_SEC + ts.tv_nsec / 100;
+        return speedhack_multiply( (timeout_t)ts.tv_sec * TICKS_PER_SEC + ts.tv_nsec / 100 );
 #endif
     if (!clock_gettime( CLOCK_MONOTONIC, &ts ))
-        return (timeout_t)ts.tv_sec * TICKS_PER_SEC + ts.tv_nsec / 100;
+        return speedhack_multiply( (timeout_t)ts.tv_sec * TICKS_PER_SEC + ts.tv_nsec / 100 );
 #endif
-    return current_time - server_start_time;
+    return speedhack_multiply( current_time - server_start_time );
 }
 
 static void master_socket_dump( struct object *obj, int verbose )

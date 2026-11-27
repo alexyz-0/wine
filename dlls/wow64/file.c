@@ -980,3 +980,36 @@ NTSTATUS WINAPI wow64_wine_unix_to_nt_file_name( UINT *args )
 
     return wine_unix_to_nt_file_name( name, buffer, size );
 }
+
+
+/**********************************************************************
+ *           wow64_wine_update_speedhack_multiplier
+ */
+NTSTATUS WINAPI wow64_wine_update_speedhack_multiplier( UINT *args )
+{
+    ULONG multiplier = get_ulong( &args );
+
+    return wine_update_speedhack_multiplier( multiplier );
+}
+
+
+/**********************************************************************
+ *           wow64_wine_speedhack_setup_signals
+ */
+NTSTATUS WINAPI wow64_wine_speedhack_setup_signals( UINT *args )
+{
+    return wine_speedhack_setup_signals();
+}
+
+
+/**********************************************************************
+ *           wow64_wine_speedhack_poll_signals
+ */
+NTSTATUS WINAPI wow64_wine_speedhack_poll_signals( UINT *args )
+{
+    ULONG *sig1_val = get_ptr( &args );
+    ULONG *sig2_val = get_ptr( &args );
+    ULONG *flags = get_ptr( &args );
+
+    return wine_speedhack_poll_signals( sig1_val, sig2_val, flags );
+}
